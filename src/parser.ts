@@ -1,57 +1,38 @@
-/**
- * Parses and validates raw log lines as structured JSON entries.
- */
-
-export interface LogEntry {
-  timestamp: string;
-  level?: string;
-  message?: string;
-  [key: string]: unknown;
-}
+export type LogEntry = Record<string, unknown>;
 
 export interface ParseResult {
   entry: LogEntry | null;
-  error: string | null;
   raw: string;
+  error?: string;
 }
 
-/**
- * Attempts to parse a single log line as a JSON object with a timestamp field.
- */
 export function parseLogLine(line: string): ParseResult {
   const trimmed = line.trim();
   if (!trimmed) {
-    return { entry: null, error: 'empty line', raw: line };
+    return { entry: null, raw: line, error: 'empty line' };
   }
-
-  let parsed: unknown;
   try {
-    parsed = JSON.parse(trimmed);
-  } catch {
-    return { entry: null, error: 'invalid JSON', raw: line };
+    const entry = JSON.parse(trimmed) as LogEntry;
+    if (typeof entry !== 'object' || Array.isArray(entry) || entry === null) {
+      return { entry: null, raw: line, error: 'not a JSON object' };
+    }
+    return { entry, raw: line };
+  } catch (err) {
+    return {
+      entry: null,
+      raw: line,
+      error: `JSON parse error: ${(err as Error).message}`,
+    };
   }
-
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    return { entry: null, error: 'not a JSON object', raw: line };
-  }
-
-  const obj = parsed as Record<string, unknown>;
-
-  const tsField = obj['timestamp'] ?? obj['time'] ?? obj['ts'] ?? obj['@timestamp'];
-  if (!tsField || typeof tsField !== 'string') {
-    return { entry: null, error: 'missing or invalid timestamp field', raw: line };
-  }
-
-  const entry: LogEntry = { ...obj, timestamp: tsField };
-  return { entry, error: null, raw: line };
 }
 
-/**
- * Parses multiple log lines and returns only successfully parsed entries.
- */
-export function parseLogLines(lines: string[]): LogEntry[] {
-  return lines
-    .map(parseLogLine)
-    .filter((r): r is ParseResult & { entry: LogEntry } => r.entry !== null)
-    .map((r) => r.entry);
+export function parseLogLines(input: string): ParseResult[] {
+  const lines = input.split('\n');
+  return lines.map(parseLogLine);
+}
+
+export function parseValidEntries(input: string): LogEntry[] {
+  return parseLogLines(input)
+    .filter((r) => r.entry !== null)
+    .map((r) => r.entry as LogEntry);
 }
