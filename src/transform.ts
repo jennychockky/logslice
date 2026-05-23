@@ -65,6 +65,15 @@ export function omitFields(entry: LogEntry, fields: string[]): LogEntry {
 
 /**
  * Apply a full set of transformations to a single log entry.
+ *
+ * Transformation order:
+ *   1. pick  — keep only the listed fields
+ *   2. omit  — remove the listed fields
+ *   3. rename — rename fields according to the mapping
+ *   4. redact — replace field values with "[REDACTED]"
+ *
+ * Note: pick and omit are mutually exclusive in intent; applying both is
+ * allowed but may produce unexpected results.
  */
 export function transformEntry(entry: LogEntry, options: TransformOptions): LogEntry {
   let result = { ...entry };
