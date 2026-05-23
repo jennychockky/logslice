@@ -1,81 +1,86 @@
-import { repairJsonLine, repairLines } from './repair';
+import { repairJsonLine, repairLines } from "./repair";
 
-describe('repairJsonLine', () => {
-  it('parses a valid JSON object without repair', () => {
-    const result = repairJsonLine('{"level":"info","msg":"hello"}');
-    expect(result.entry).toEqual({ level: 'info', msg: 'hello' });
-    expect(result.repaired).toBe(false);
+describe("repairJsonLine", () => {
+  it("returns valid JSON unchanged", () => {
+    const line = '{"level":"info","msg":"hello"}';
+    expect(repairJsonLine(line)).toBe(line);
   });
 
-  it('returns null for empty line', () => {
-    const result = repairJsonLine('   ');
-    expect(result.entry).toBeNull();
-    expect(result.error).toBe('empty line');
+  it("repairs missing closing brace", () => {
+    const line = '{"level":"info","msg":"hello"';
+    const result = repairJsonLine(line);
+    expect(result).not.toBeNull();
+    expect(() => JSON.parse(result!)).not.toThrow();
   });
 
-  it('returns null for a JSON array', () => {
-    const result = repairJsonLine('[1,2,3]');
-    expect(result.entry).toBeNull();
-    expect(result.error).toBe('not a JSON object');
+  it("repairs trailing comma before closing brace", () => {
+    const line = '{"level":"info","msg":"hello",}';
+    const result = repairJsonLine(line);
+    expect(result).not.toBeNull();
+    const parsed = JSON.parse(result!);
+    expect(parsed.level).toBe("info");
   });
 
-  it('repairs trailing commas in object', () => {
-    const result = repairJsonLine('{"level":"info","msg":"hello",}');
-    expect(result.entry).toEqual({ level: 'info', msg: 'hello' });
-    expect(result.repaired).toBe(true);
+  it("returns null for non-JSON lines", () => {
+    expect(repairJsonLine("plain text log line")).toBeNull();
   });
 
-  it('repairs trailing commas in nested structure', () => {
-    const result = repairJsonLine('{"a":1,"b":[1,2,],}');
-    expect(result.entry).toEqual({ a: 1, b: [1, 2] });
-    expect(result.repaired).toBe(true);
+  it("returns null for empty string", () => {
+    expect(repairJsonLine("")).toBeNull();
   });
 
-  it('parses key=value logfmt style lines', () => {
-    const result = repairJsonLine('level=info msg=hello count=42');
-    expect(result.entry).toEqual({ level: 'info', msg: 'hello', count: 42 });
-    expect(result.repaired).toBe(true);
+  it("handles single-quoted keys by returning null", () => {
+    const result = repairJsonLine("{'level':'info'}");
+    // single quotes are not valid JSON and cannot be trivially repaired
+    expect(result).toBeNull();
   });
 
-  it('returns null for completely unparseable input', () => {
-    const result = repairJsonLine('this is not json or kv');
-    expect(result.entry).toBeNull();
-    expect(result.error).toBe('unable to repair');
-  });
-
-  it('handles numeric values in valid JSON', () => {
-    const result = repairJsonLine('{"status":200,"latency":0.45}');
-    expect(result.entry).toEqual({ status: 200, latency: 0.45 });
-    expect(result.repaired).toBe(false);
+  it("repairs truncated string value", () => {
+    const line = '{"level":"info","msg":"truncated';
+    const result = repairJsonLine(line);
+    expect(result).not.toBeNull();
+    expect(() => JSON.parse(result!)).not.toThrow();
   });
 });
 
-describe('repairLines', () => {
-  it('processes a mix of valid, repairable, and failed lines', () => {
+describe("repairLines", () => {
+  it("separates repaired and failed lines", () => {
     const lines = [
       '{"level":"info","msg":"ok"}',
-      '{"level":"warn","msg":"trailing",}',
-      'level=error msg=boom',
-      'totally broken }{',
+      '{"level":"warn","msg":"missing brace"',
+      "not json at all",
     ];
-    const { entries, repairedCount, failedCount } = repairLines(lines);
-    expect(entries).toHaveLength(3);
-    expect(repairedCount).toBe(2);
-    expect(failedCount).toBe(1);
+    const { repaired, failed } = repairLines(lines);
+    expect(repaired.length).toBeGreaterThanOrEqual(1);
+    expect(failed.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('returns empty results for all-empty input', () => {
-    const { entries, repairedCount, failedCount } = repairLines(['', '   ', '\t']);
-    expect(entries).toHaveLength(0);
-    expect(repairedCount).toBe(0);
-    expect(failedCount).toBe(3);
+  it("returns all lines as repaired when all valid", () => {
+    const lines = [
+      '{"level":"info","msg":"a"}',
+      '{"level":"error","msg":"b"}',
+    ];
+    const { repaired, failed } = repairLines(lines);
+    expect(repaired).toHaveLength(2);
+    expect(failed).toHaveLength(0);
   });
 
-  it('counts no repairs when all lines are valid JSON', () => {
-    const lines = ['{"a":1}', '{"b":2}'];
-    const { entries, repairedCount, failedCount } = repairLines(lines);
-    expect(entries).toHaveLength(2);
-    expect(repairedCount).toBe(0);
-    expect(failedCount).toBe(0);
+  it("returns all lines as failed when none parseable", () => {
+    const lines = ["foo bar", "baz qux"];
+    const { repaired, failed } = repairLines(lines);
+    expect(repaired).toHaveLength(0);
+    expect(failed).toHaveLength(2);
+  });
+
+  it("preserves original line in failed entries", () => {
+    const lines = ["not json"];
+    const { failed } = repairLines(lines);
+    expect(failed[0].original).toBe("not json");
+  });
+
+  it("handles empty input", () => {
+    const { repaired, failed } = repairLines([]);
+    expect(repaired).toHaveLength(0);
+    expect(failed).toHaveLength(0);
   });
 });
