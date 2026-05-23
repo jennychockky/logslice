@@ -44,6 +44,10 @@ export function parseRepairArgs(argv: string[]): RepairArgs {
       printUsage();
       process.exit(0);
     } else if (arg === "--output" || arg === "-o") {
+      if (i + 1 >= argv.length) {
+        console.error("Error: --output requires a file path argument");
+        process.exit(1);
+      }
       args.output = argv[++i];
     } else if (arg === "--strict") {
       args.strict = true;
@@ -51,6 +55,9 @@ export function parseRepairArgs(argv: string[]): RepairArgs {
       args.summary = true;
     } else if (!arg.startsWith("-")) {
       args.files.push(arg);
+    } else {
+      console.error(`Error: Unknown option '${arg}'`);
+      process.exit(1);
     }
   }
 
@@ -61,6 +68,10 @@ async function readAllInput(files: string[]): Promise<string[]> {
   if (files.length > 0) {
     const lines: string[] = [];
     for (const file of files) {
+      if (!fs.existsSync(file)) {
+        console.error(`Error: File not found: ${file}`);
+        process.exit(1);
+      }
       const content = fs.readFileSync(file, "utf8");
       lines.push(...content.split("\n").filter((l) => l.trim().length > 0));
     }
