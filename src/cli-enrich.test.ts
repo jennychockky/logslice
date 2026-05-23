@@ -60,6 +60,18 @@ describe("parseEnrichArgs", () => {
     expect(result.options.indexField).toBe("seq");
   });
 
+  it("defaults addTimestamp to false when not specified", () => {
+    const file = writeTempFile("");
+    const result = parseEnrichArgs(["node", "cli-enrich", file]);
+    expect(result.options.addTimestamp).toBeFalsy();
+  });
+
+  it("defaults addIndex to false when not specified", () => {
+    const file = writeTempFile("");
+    const result = parseEnrichArgs(["node", "cli-enrich", file]);
+    expect(result.options.addIndex).toBeFalsy();
+  });
+
   it("throws when no file is provided", () => {
     expect(() => parseEnrichArgs(["node", "cli-enrich", "--add-index"])).toThrow(
       "No input file specified"
